@@ -1,0 +1,25 @@
+## Self Download YouTube Videos
+
+Download YouTube videos (MP4) or audio (MP3) directly to your computer.
+- Self: runs on your own computer.
+- No ads or tracking built into the app.
+- No random online downloader websites.
+- Downloads are saved locally on your computer.
+
+## How to build
+
+in powershell
+docker build --no-cache -t youtube-downloader .
+Build the Docker image (usually takes 1–2 minutes):
+in powershell
+docker run --rm -it -v "${PWD}/downloads:/downloads" youtube-downloader
+
+
+
+## How to run 
+1. Choose MP4 video or MP3 audio, paste your link, and wait for the download to finish.
+2. but in your YouTube link.
+3. usually takes 45–120 sec
+4. Will be but in u YouTube-video-downloader/dowloade folder
+
+
