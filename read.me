@@ -70,3 +70,44 @@ inspection and future configuration.
 docker stop youtube-downloader
 docker rm youtube-downloader
 ```
+
+## Deploy the backend to Fly.io
+
+Cloudflare Pages hosts only the frontend. The C# downloader must run on
+Fly.io or another server that supports Docker.
+
+From the repository directory:
+
+```bash
+fly auth login
+fly deploy -a downloadvids
+```
+
+Set the exact Cloudflare Pages URL as a Fly secret. Do not include a trailing
+slash:
+
+```bash
+fly secrets set \
+  FRONTEND_ORIGIN=https://YOUR-SITE.pages.dev \
+  -a downloadvids
+```
+
+Verify the backend:
+
+```bash
+fly status -a downloadvids
+curl https://downloadvids.fly.dev/health
+```
+
+The health endpoint should return:
+
+```json
+{"status":"ok"}
+```
+
+The frontend must call:
+
+```text
+https://downloadvids.fly.dev/api/info
+https://downloadvids.fly.dev/api/download
+```

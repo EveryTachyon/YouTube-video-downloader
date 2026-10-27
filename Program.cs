@@ -8,22 +8,26 @@ string downloaderExecutable = Environment.GetEnvironmentVariable("YTDLP_EXECUTAB
     ?? "yt-dlp";
 
 var builder = WebApplication.CreateBuilder(args);
-string frontendOrigin = Environment.GetEnvironmentVariable("FRONTEND_ORIGIN")
-    ?? throw new InvalidOperationException(
-        "FRONTEND_ORIGIN must contain the Cloudflare Pages URL.");
+string? frontendOrigin = Environment.GetEnvironmentVariable("FRONTEND_ORIGIN");
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
-        policy.WithOrigins(frontendOrigin)
-            .AllowAnyHeader()
-            .AllowAnyMethod());
+    {
+        if (!string.IsNullOrWhiteSpace(frontendOrigin))
+        {
+            policy.WithOrigins(frontendOrigin)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
 });
 
 var app = builder.Build();
 app.UseCors("Frontend");
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapPost("/api/info", async (InfoRequest request, HttpContext context) =>
 {
