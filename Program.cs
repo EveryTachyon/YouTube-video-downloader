@@ -8,8 +8,20 @@ string downloaderExecutable = Environment.GetEnvironmentVariable("YTDLP_EXECUTAB
     ?? "yt-dlp";
 
 var builder = WebApplication.CreateBuilder(args);
+string frontendOrigin = Environment.GetEnvironmentVariable("FRONTEND_ORIGIN")
+    ?? throw new InvalidOperationException(
+        "FRONTEND_ORIGIN must contain the Cloudflare Pages URL.");
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Frontend", policy =>
+        policy.WithOrigins(frontendOrigin)
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
 
 var app = builder.Build();
+app.UseCors("Frontend");
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
