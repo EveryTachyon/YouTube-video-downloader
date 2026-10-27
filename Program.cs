@@ -1,143 +1,142 @@
-
 using System.Diagnostics;
-using System.Globalization;
 using System.Text.RegularExpressions;
-using System.Text;
 
-const string OutputDirectory = "/downloads";
+string outputDirectory = Environment.GetEnvironmentVariable("DOWNLOAD_DIRECTORY")
+    ?? "/downloads";
+string downloaderExecutable = Environment.GetEnvironmentVariable("YTDLP_EXECUTABLE")
+    ?? "yt-dlp";
 
-Console.OutputEncoding = Encoding.UTF8;
+var builder = WebApplication.CreateBuilder(args);
 
-Console.WriteLine("       YouTube Downloader");
-Console.WriteLine();
-Console.WriteLine("Choose a download from:");
-Console.WriteLine("  1. Video (MP4)");
-Console.WriteLine("  2. Audio (MP3)");
-Console.Write("Selection: ");
+var app = builder.Build();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
-string? choice = Console.ReadLine()?.Trim();
-
-if (choice is not ("1" or "2"))
+app.MapPost("/api/download", async (DownloadRequest request, HttpContext context) =>
 {
-    Console.WriteLine("Invalid selection. Enter 1 or 2.");
-    return;
-}
-
-Console.WriteLine();
-Console.Write("Paste a YouTube URL: ");
-
-string? input = Console.ReadLine()?.Trim();
-
-if (!TryGetVideoUrl(input, out string videoUrl))
-{
-    Console.WriteLine("Invalid URL. Enter a valid YouTube video link.");
-    return;
-}
-
-if (!Directory.Exists(OutputDirectory))
-{
-    Console.WriteLine($"Output directory does not exist: {OutputDirectory}");
-    return;
-}
-
-var startInfo = new ProcessStartInfo
-{
-    FileName = "yt-dlp",
-    WorkingDirectory = OutputDirectory,
-    UseShellExecute = false,
-    RedirectStandardOutput = true,
-    RedirectStandardError = true,
-    CreateNoWindow = true
-};
-
-
-AddArgument(startInfo, "--no-playlist");
-AddArgument(startInfo, "--windows-filenames");
-AddArgument(startInfo, "--no-colors");
-AddArgument(startInfo, "--newline");
-AddArgument(startInfo, "--js-runtimes");
-AddArgument(startInfo, "deno");
-
-AddArgument(startInfo, "-o");
-AddArgument(startInfo, "%(title).200B [%(id)s].%(ext)s");
-
-
-AddArgument(startInfo, "--progress-template");
-AddArgument(startInfo,
-    "download:PROGRESS:%(info.ext)s|%(progress._percent_str)s|" +
-    "%(progress._speed_str)s|%(progress._eta_str)s");
-
-if (choice == "1")
-{
-    Console.WriteLine();
-    Console.WriteLine("Mode: MP4 video");
-    
-
-    AddArgument(startInfo, "-f");
-    AddArgument(startInfo,
-        "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b");
-
-    AddArgument(startInfo, "--merge-output-format");
-    AddArgument(startInfo, "mp4");
-}
-else
-{
-    Console.WriteLine();
-    Console.WriteLine("Mode: MP3 audio");
-
-    AddArgument(startInfo, "-x");
-    AddArgument(startInfo, "--audio-format");
-    AddArgument(startInfo, "mp3");
-    AddArgument(startInfo, "--audio-quality");
-    AddArgument(startInfo, "0");
-}
-
-AddArgument(startInfo, videoUrl);
-
-var stopwatch = Stopwatch.StartNew();
-
-try
-{
-    using var process = Process.Start(startInfo);
-
-    if (process is null)
+    if (!TryGetVideoUrl(request.Url, out string videoUrl))
     {
-        Console.WriteLine("Could not start yt-dlp.");
-        return;
+        return Results.BadRequest(new { error = "Enter a valid YouTube video URL." });
     }
 
-    var progress = new DownloadProgress();
-
-    Task stdoutTask = ReadOutputAsync(
-        process.StandardOutput, progress, false);
-
-    Task stderrTask = ReadOutputAsync(
-        process.StandardError, progress, true);
-
-    await process.WaitForExitAsync();
-    await Task.WhenAll(stdoutTask, stderrTask);
-
-    stopwatch.Stop();
-
-    Console.WriteLine();
-
-    if (process.ExitCode == 0)
+    if (request.Format is not ("mp4" or "mp3"))
     {
-        Console.WriteLine("Download completed successfully.");
-        Console.WriteLine($"Elapsed time: {stopwatch.Elapsed:hh\\:mm\\:ss}");
-        Console.WriteLine($"Saved in: {OutputDirectory}");
+        return Results.BadRequest(new { error = "Choose MP4 video or MP3 audio." });
     }
-    else
+
+    Directory.CreateDirectory(outputDirectory);
+    string jobDirectory = Path.Combine(outputDirectory, Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(jobDirectory);
+
+    try
     {
-        Console.WriteLine($"Download failed (exit code {process.ExitCode}).");
-        Console.WriteLine("Check the error messages above.");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = downloaderExecutable,
+            WorkingDirectory = jobDirectory,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true
+        };
+
+        AddArgument(startInfo, "--no-playlist");
+        AddArgument(startInfo, "--windows-filenames");
+        AddArgument(startInfo, "--no-colors");
+        AddArgument(startInfo, "--js-runtimes");
+        AddArgument(startInfo, "deno");
+        AddArgument(startInfo, "-o");
+        AddArgument(startInfo, "%(title).200B [%(id)s].%(ext)s");
+
+        if (request.Format == "mp4")
+        {
+            AddArgument(startInfo, "-f");
+            AddArgument(startInfo, "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b");
+            AddArgument(startInfo, "--merge-output-format");
+            AddArgument(startInfo, "mp4");
+        }
+        else
+        {
+            AddArgument(startInfo, "-x");
+            AddArgument(startInfo, "--audio-format");
+            AddArgument(startInfo, "mp3");
+            AddArgument(startInfo, "--audio-quality");
+            AddArgument(startInfo, "0");
+        }
+
+        AddArgument(startInfo, videoUrl);
+
+        using var process = Process.Start(startInfo);
+        if (process is null)
+        {
+            return Results.Problem("The downloader could not be started.");
+        }
+
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync(
+            context.RequestAborted);
+        Task<string> errorTask = process.StandardError.ReadToEndAsync(
+            context.RequestAborted);
+        await process.WaitForExitAsync(context.RequestAborted);
+        _ = await outputTask;
+        string standardError = await errorTask;
+
+        if (process.ExitCode != 0)
+        {
+            string detail = standardError.Trim();
+            Console.Error.WriteLine(detail);
+            return Results.Problem(
+                detail.Length > 0 ? detail : "The download failed.");
+        }
+
+        string? downloadedFile = Directory.EnumerateFiles(jobDirectory)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+
+        if (downloadedFile is null)
+        {
+            return Results.Problem("The download completed without creating a file.");
+        }
+
+        string contentType = request.Format == "mp3"
+            ? "audio/mpeg"
+            : "video/mp4";
+
+        context.Response.OnCompleted(() =>
+        {
+            try
+            {
+                if (Directory.Exists(jobDirectory))
+                {
+                    Directory.Delete(jobDirectory, recursive: true);
+                }
+            }
+            catch (IOException exception)
+            {
+                Console.Error.WriteLine(
+                    $"Could not clean up download directory: {exception.Message}");
+            }
+
+            return Task.CompletedTask;
+        });
+
+        return Results.File(
+            downloadedFile,
+            contentType,
+            Path.GetFileName(downloadedFile),
+            enableRangeProcessing: true);
     }
-}
-catch (Exception ex)
-{
-    stopwatch.Stop();
-    Console.WriteLine($"Error: {ex.Message}");
-}
+    catch (OperationCanceledException)
+    {
+        return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
+    }
+    catch (Exception exception)
+    {
+        Console.Error.WriteLine(exception);
+        return Results.Problem("The server could not complete the download.");
+    }
+});
+
+app.Run();
 
 static void AddArgument(ProcessStartInfo info, string argument)
 {
@@ -149,7 +148,7 @@ static bool TryGetVideoUrl(string? input, out string videoUrl)
     videoUrl = "";
 
     if (string.IsNullOrWhiteSpace(input) ||
-        !Uri.TryCreate(input, UriKind.Absolute, out Uri? uri) ||
+        !Uri.TryCreate(input.Trim(), UriKind.Absolute, out Uri? uri) ||
         uri.Scheme != Uri.UriSchemeHttps)
     {
         return false;
@@ -166,14 +165,11 @@ static bool TryGetVideoUrl(string? input, out string videoUrl)
              host.EndsWith(".youtube.com", StringComparison.Ordinal))
     {
         var query = uri.Query.TrimStart('?');
-
         foreach (string parameter in query.Split(
                      '&', StringSplitOptions.RemoveEmptyEntries))
         {
             string[] parts = parameter.Split('=', 2);
-
-            if (parts.Length == 2 &&
-                parts[0] == "v")
+            if (parts.Length == 2 && parts[0] == "v")
             {
                 videoId = Uri.UnescapeDataString(parts[1]);
                 break;
@@ -184,11 +180,8 @@ static bool TryGetVideoUrl(string? input, out string videoUrl)
         {
             string[] path = uri.AbsolutePath.Split(
                 '/', StringSplitOptions.RemoveEmptyEntries);
-
             if (path.Length >= 2 &&
-                (path[0] == "shorts" ||
-                 path[0] == "embed" ||
-                 path[0] == "live"))
+                (path[0] == "shorts" || path[0] == "embed" || path[0] == "live"))
             {
                 videoId = path[1];
             }
@@ -205,86 +198,4 @@ static bool TryGetVideoUrl(string? input, out string videoUrl)
     return true;
 }
 
-static async Task ReadOutputAsync(
-    StreamReader reader,
-    DownloadProgress progress,
-    bool isError)
-{
-    string? line;
-
-    while ((line = await reader.ReadLineAsync()) is not null)
-    {
-        if (!isError && line.StartsWith(
-                "PROGRESS:", StringComparison.Ordinal))
-        {
-            progress.ProcessLine(line);
-            continue;
-        }
-
-        // Keep normal yt-dlp messages and errors visible.
-        if (!string.IsNullOrWhiteSpace(line))
-        {
-            Console.WriteLine(line);
-        }
-    }
-}
-
-sealed class DownloadProgress
-{
-    private int lastMilestone;
-    private double lastPercent;
-    private string? lastFormat;
-
-    public void ProcessLine(string line)
-    {
-        string data = line["PROGRESS:".Length..];
-        string[] parts = data.Split('|');
-
-        if (parts.Length < 4)
-            return;
-
-        Match match = Regex.Match(parts[1], @"(\d+(?:\.\d+)?)");
-
-        if (!match.Success ||
-            !double.TryParse(
-                match.Groups[1].Value,
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out double percent))
-        {
-            return;
-        }
-
-        percent = Math.Clamp(percent, 0, 100);
-
-        if (!string.Equals(lastFormat, parts[0], StringComparison.Ordinal) ||
-            percent < lastPercent)
-        {
-            lastMilestone = 0;
-            lastFormat = parts[0];
-        }
-
-        int milestone = (int)(percent / 5) * 5;
-
-        if (percent >= 100)
-            milestone = 100;
-
-        lastPercent = percent;
-
-        if (milestone <= lastMilestone)
-            return;
-
-        Console.Write($"Download progress ({parts[0]}): {milestone}%");
-        Console.Write($" (actual {percent:F1}%)");
-
-        if (!string.IsNullOrWhiteSpace(parts[2]) && parts[2] != "NA")
-            Console.Write($" | Speed: {parts[2]}");
-
-        if (!string.IsNullOrWhiteSpace(parts[3]) && parts[3] != "NA")
-            Console.Write($" | ETA: {parts[3]}");
-
-        Console.WriteLine();
-
-        lastMilestone = milestone;
-    }
-}
+record DownloadRequest(string? Url, string? Format);

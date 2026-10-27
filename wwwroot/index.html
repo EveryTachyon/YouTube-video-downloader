@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>ClipDrop Downloader</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #090d18;
+      --panel: #111827;
+      --panel-light: #1d273b;
+      --text: #f8fafc;
+      --muted: #9aa8bd;
+      --accent: #6d5dfc;
+      --accent-hover: #8174ff;
+      --border: rgba(255,255,255,.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font: 16px/1.5 system-ui, -apple-system, Segoe UI, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 50% -20%, #26345d, var(--background) 55%);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px max(22px, calc((100% - 1100px) / 2));
+      border-bottom: 1px solid var(--border);
+      background: rgba(9,13,24,.75);
+      backdrop-filter: blur(14px);
+    }
+    .brand { font-size: 1.15rem; font-weight: 800; letter-spacing: -.03em; }
+    .status { color: #a7f3d0; font-size: .88rem; }
+    main { width: min(720px, calc(100% - 32px)); margin: 64px auto; }
+    .hero { text-align: center; margin-bottom: 28px; }
+    h1 { margin: 0 0 10px; font-size: clamp(2rem, 7vw, 3.2rem); letter-spacing: -.06em; }
+    .hero p { margin: 0; color: var(--muted); }
+    .card {
+      padding: clamp(22px, 5vw, 42px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: rgba(17,24,39,.86);
+      box-shadow: 0 24px 80px rgba(0,0,0,.3);
+    }
+    label { display: block; margin-bottom: 9px; color: var(--muted); font-size: .9rem; font-weight: 650; }
+    .url-row { display: flex; gap: 10px; }
+    input {
+      min-width: 0; flex: 1; padding: 15px 16px; border: 1px solid var(--border);
+      border-radius: 12px; outline: 0; color: var(--text); background: #0b1120; font: inherit;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #6d5dfc33; }
+    button {
+      border: 0; border-radius: 12px; padding: 14px 20px; color: white; background: var(--accent);
+      font: inherit; font-weight: 750; cursor: pointer; transition: .2s ease;
+    }
+    button:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    button:disabled { cursor: wait; opacity: .6; transform: none; }
+    .formats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+    .format { padding: 18px; text-align: left; background: var(--panel-light); }
+    .format strong, .format span { display: block; }
+    .format span { margin-top: 3px; color: var(--muted); font-size: .85rem; font-weight: 450; }
+    .message { min-height: 24px; margin: 20px 0 0; color: var(--muted); text-align: center; }
+    .message.error { color: #fca5a5; }
+    footer { margin-top: 22px; color: var(--muted); text-align: center; font-size: .83rem; }
+    @media (max-width: 560px) {
+      .topbar { padding: 15px 16px; }
+      .status { display: none; }
+      main { margin: 38px auto; }
+      .url-row { flex-direction: column; }
+      .formats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">ClipDrop</div>
+    <div class="status">● Ready to download</div>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>Download your video</h1>
+      <p>Paste a YouTube link, choose a format, and save it on your device.</p>
+    </section>
+    <section class="card">
+      <form id="download-form">
+        <label for="url">YouTube URL</label>
+        <div class="url-row">
+          <input id="url" name="url" type="url" placeholder="https://youtube.com/watch?v=..." required>
+          <button type="submit">Get formats</button>
+        </div>
+      </form>
+      <div id="formats" class="formats" hidden>
+        <button class="format" data-format="mp3" type="button">
+          <strong>MP3 audio</strong><span>Best for music and podcasts</span>
+        </button>
+        <button class="format" data-format="mp4" type="button">
+          <strong>MP4 video</strong><span>Video with sound</span>
+        </button>
+      </div>
+      <p id="message" class="message" role="status"></p>
+    </section>
+    <footer>Only download content you have permission to use.</footer>
+  </main>
+  <script>
+    const form = document.querySelector("#download-form");
+    const url = document.querySelector("#url");
+    const formats = document.querySelector("#formats");
+    const message = document.querySelector("#message");
+    const buttons = [...document.querySelectorAll("[data-format]")];
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (!url.value.trim()) return;
+      formats.hidden = false;
+      message.textContent = "Choose MP3 audio or MP4 video.";
+      message.className = "message";
+    });
+
+    buttons.forEach((button) => button.addEventListener("click", async () => {
+      buttons.forEach((item) => item.disabled = true);
+      message.textContent = "Preparing your download...";
+      message.className = "message";
+      try {
+        const response = await fetch("/api/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.value.trim(), format: button.dataset.format })
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          throw new Error(error.detail || error.error || "Download failed.");
+        }
+        const blob = await response.blob();
+        const name = response.headers.get("Content-Disposition")?.match(/filename="?([^"]+)"?/)?.[1]
+          || `download.${button.dataset.format}`;
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = name;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        message.textContent = "Download started.";
+      } catch (error) {
+        message.textContent = error.message;
+        message.className = "message error";
+      } finally {
+        buttons.forEach((item) => item.disabled = false);
+      }
+    }));
+  </script>
+</body>
+</html>

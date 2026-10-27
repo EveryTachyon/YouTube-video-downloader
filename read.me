@@ -1,25 +1,72 @@
-## Self Download YouTube Videos
+# YouTube video downloader
 
-Download YouTube videos (MP4) or audio (MP3) directly to your computer.
-- Self: runs on your own computer.
-- No ads or tracking built into the app.
-- No random online downloader websites.
-- Downloads are saved locally on your computer.
+This is a small web downloader for MP4 video and MP3 audio. It runs in a
+Docker container and lets a computer or phone download the result through a
+browser.
 
-## How to build
+## Requirements
 
-in powershell
-docker build --no-cache -t youtube-downloader .
-Build the Docker image (usually takes 1–2 minutes):
-in powershell
-docker run --rm -it -v "${PWD}/downloads:/downloads" youtube-downloader
+- Docker Desktop on Windows, or Docker Engine on Linux
+- A running Docker daemon
+- Permission to download the requested content
 
+## Build the image
 
+From the repository directory:
 
-## How to run 
-1. Choose MP4 video or MP3 audio, paste your link, and wait for the download to finish.
-2. but in your YouTube link.
-3. usually takes 45–120 sec
-4. Will be but in u YouTube-video-downloader/dowloade folder
+```powershell
+docker build -t youtube-downloader .
+```
 
+The image includes .NET, `yt-dlp`, FFmpeg, and Deno. Deno is needed by
+`yt-dlp` for some YouTube extraction paths.
 
+## Run locally
+
+On Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force .\downloads | Out-Null
+docker run --rm -p 8080:8080 -v "${PWD}\downloads:/downloads" youtube-downloader
+```
+
+On Linux:
+
+```bash
+mkdir -p downloads
+docker run --rm -p 8080:8080 -v "$(pwd)/downloads:/downloads" youtube-downloader
+```
+
+Open `http://localhost:8080` in your browser. Paste a YouTube URL, choose MP3
+or MP4, and the browser will start downloading the file to the computer or
+phone.
+
+## Run on a server
+
+Copy this repository to the server, install Docker, start the Docker daemon,
+and run the build command from the repository directory. Then run:
+
+```bash
+mkdir -p downloads
+docker run -d --name youtube-downloader \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  -v "$(pwd)/downloads:/downloads" \
+  youtube-downloader
+```
+
+On the same server, use `http://localhost:8080`. From another device on the
+same network, use `http://SERVER-IP:8080`. For internet access, put the
+service behind HTTPS and authentication rather than exposing port 8080
+directly.
+
+The server keeps each temporary download only until it has been sent to the
+browser. The mounted `downloads` directory is still available for server-side
+inspection and future configuration.
+
+## Stop the server
+
+```bash
+docker stop youtube-downloader
+docker rm youtube-downloader
+```

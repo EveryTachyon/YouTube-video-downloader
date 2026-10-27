@@ -1,0 +1,9 @@
+.git
+.gitignore
+.vscode
+bin
+obj
+tests
+downloads/*
+*.user
+*.suo

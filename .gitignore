@@ -1,0 +1,30 @@
+# .NET build output
+bin/
+obj/
+
+# Local downloaded media
+downloads/*
+!downloads/.gitkeep
+
+# Test output and browser artifacts
+tests/
+test-results/
+playwright-report/
+playwright/.cache/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+# Local development configuration and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and user-specific files
+.vscode/
+*.user
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 
 WORKDIR /src
 
-RUN dotnet new console \
+RUN dotnet new web \
     --name YouTubeDownloader \
     --output . \
     --framework net10.0 \
@@ -20,9 +20,10 @@ RUN dotnet publish YouTubeDownloader.csproj \
     /p:UseAppHost=false
 
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+    ASPNETCORE_URLS=http://0.0.0.0:8080 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
@@ -52,11 +53,14 @@ ENV PATH="/root/.deno/bin:${PATH}"
 WORKDIR /app
 
 COPY --from=build /out/ ./
+COPY wwwroot/ /app/wwwroot/
 
 RUN test -f /app/YouTubeDownloader.dll \
     && mkdir -p /downloads
 
 
 VOLUME ["/downloads"]
+
+EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "/app/YouTubeDownloader.dll"]
