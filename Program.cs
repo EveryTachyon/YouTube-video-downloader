@@ -20,7 +20,8 @@ app.MapPost("/api/info", async (InfoRequest request, HttpContext context) =>
         return Results.BadRequest(new { error = "Enter a valid YouTube video URL." });
     }
 
-    var startInfo = CreateProcessStartInfo("--dump-single-json", "--skip-download",
+    var startInfo = CreateProcessStartInfo(downloaderExecutable,
+        "--dump-single-json", "--skip-download",
         "--no-playlist", "--no-warnings", "--js-runtimes", "deno", videoUrl);
 
     try
@@ -105,7 +106,8 @@ app.MapPost("/api/download", async (DownloadRequest request, HttpContext context
 
     try
     {
-        var startInfo = CreateProcessStartInfo("--no-playlist", "--windows-filenames",
+        var startInfo = CreateProcessStartInfo(downloaderExecutable,
+            "--no-playlist", "--windows-filenames",
             "--no-colors", "--js-runtimes", "deno");
         startInfo.WorkingDirectory = jobDirectory;
         AddArgument(startInfo, "-o");
@@ -206,11 +208,13 @@ static void AddArgument(ProcessStartInfo info, string argument)
     info.ArgumentList.Add(argument);
 }
 
-static ProcessStartInfo CreateProcessStartInfo(params string[] arguments)
+static ProcessStartInfo CreateProcessStartInfo(
+    string executable,
+    params string[] arguments)
 {
     var info = new ProcessStartInfo
     {
-        FileName = downloaderExecutable,
+        FileName = executable,
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
